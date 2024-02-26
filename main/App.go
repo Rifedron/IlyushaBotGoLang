@@ -2,7 +2,6 @@ package main
 
 import (
 	"awesomeProject/main/IlyushaBot"
-	"awesomeProject/main/IlyushaBot/moderation"
 	"awesomeProject/main/IlyushaBot/offers"
 	"awesomeProject/main/IlyushaBot/privateVCs"
 	"fmt"
@@ -24,7 +23,6 @@ func main() {
 		//Event handler slices
 		offers.OfferEvents,
 		privateVCs.PrivateVcEvents,
-		moderation.ModerationEvents,
 	) {
 		Bob.AddHandler(handler)
 	}
