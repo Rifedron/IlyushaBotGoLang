@@ -39,9 +39,11 @@ var PrivatesInteractions = map[string]func(s *discordgo.Session, i *discordgo.In
 		if b {
 			go s.ChannelMessageSend(private.ChannelID, fmt.Sprintf(
 				"**%s теперь владелец этого канала**", i.Member.Mention()))
-			go s.ChannelPermissionDelete(private.ChannelID, private.CurrentOwnerID)
-			go s.ChannelPermissionSet(private.ChannelID, i.Member.User.ID, discordgo.PermissionOverwriteTypeMember,
-				discordgo.PermissionManageChannels|discordgo.PermissionVoiceMoveMembers, 0)
+			go func(currOwnerID string) {
+				s.ChannelPermissionDelete(private.ChannelID, currOwnerID)
+				s.ChannelPermissionSet(private.ChannelID, i.Member.User.ID, discordgo.PermissionOverwriteTypeMember,
+					discordgo.PermissionManageChannels|discordgo.PermissionVoiceMoveMembers, 0)
+			}(private.CurrentOwnerID)
 			private.CurrentOwnerID = i.Member.User.ID
 			go updatePrivates()
 			_ = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
