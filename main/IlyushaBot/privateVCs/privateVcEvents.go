@@ -4,12 +4,16 @@ import (
 	"awesomeProject/main/IlyushaBot"
 	"fmt"
 	"github.com/bwmarrin/discordgo"
+	"slices"
 	"time"
 )
 
 var PrivateVcEvents = []interface{}{
 	func(s *discordgo.Session, e *discordgo.VoiceStateUpdate) {
 		if e.BeforeUpdate != nil {
+			if e.BeforeUpdate.ChannelID == e.ChannelID {
+				return
+			}
 			go voiceQuit(s, e.BeforeUpdate)
 		}
 		if e.VoiceState.ChannelID != "" {
@@ -147,12 +151,7 @@ func deletePrivate(s *discordgo.Session, private *privateVC) {
 
 func voiceEmpty(s *discordgo.Session, guildID string, privateID string) bool {
 	g, _ := s.State.Guild(guildID)
-	for _, state := range g.VoiceStates {
-		if state.ChannelID == privateID {
-			return false
-		}
-	}
-	return true
+	return !slices.ContainsFunc(g.VoiceStates, func(st *discordgo.VoiceState) bool { return st.ChannelID == privateID })
 }
 
 func privateVoicePermOverwrites(userID string) []*discordgo.PermissionOverwrite {

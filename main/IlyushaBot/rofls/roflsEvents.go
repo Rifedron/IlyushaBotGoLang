@@ -18,22 +18,4 @@ var RoflsEvents = []interface{}{
 			}
 		}
 	},
-	func(s *discordgo.Session, e *discordgo.MessageCreate) {
-		if e.Content == "%boba" {
-			roles, err := s.GuildRoles(e.GuildID)
-			if err != nil {
-				fmt.Println(err.Error())
-				return
-			}
-			var msgContent string
-			for _, role := range roles {
-				msgContent = fmt.Sprintf("%s %s %d\n", msgContent, role.Name, role.Position)
-			}
-			_, err = s.ChannelMessageSend(e.ChannelID, msgContent)
-			if err != nil {
-				fmt.Println(err.Error())
-				return
-			}
-		}
-	},
 }

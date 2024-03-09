@@ -167,6 +167,12 @@ func takenTicketChannelEdit(ticket *activeTicket, defRoleID string) *discordgo.C
 				Allow: discordgo.PermissionViewChannel | discordgo.PermissionSendMessages,
 			},
 			{
+				ID:    IlyushaBot.Cfg.ElderModRoleID,
+				Type:  discordgo.PermissionOverwriteTypeRole,
+				Deny:  discordgo.PermissionSendMessages,
+				Allow: discordgo.PermissionViewChannel,
+			},
+			{
 				ID:   defRoleID,
 				Type: discordgo.PermissionOverwriteTypeRole,
 				Deny: discordgo.PermissionViewChannel | discordgo.PermissionSendMessages,
