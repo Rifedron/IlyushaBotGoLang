@@ -4,12 +4,13 @@ import (
 	"awesomeProject/main/IlyushaBot"
 	"fmt"
 	"github.com/bwmarrin/discordgo"
+	"strconv"
 )
 
 var OfferEvents = []interface{}{
 
 	func(s *discordgo.Session, e *discordgo.MessageCreate) {
-		if !e.Author.Bot {
+		if !e.Author.Bot && e.Message.Content != "" {
 			if e.ChannelID == IlyushaBot.Cfg.OffersChannelId {
 				err := s.ChannelMessageDelete(e.ChannelID, e.Message.ID)
 				if err != nil {
@@ -34,7 +35,16 @@ var OfferEvents = []interface{}{
 	},
 
 	func(s *discordgo.Session, e *discordgo.MessageDelete) {
-		_ = removeOfferFile(e.Message.ID)
+		o, err := getOffer(e.Message.ID)
+		if err != nil {
+			return
+		}
+		msg, _ := s.ChannelMessageSendComplex(e.ChannelID, &discordgo.MessageSend{
+			Embed:      o.Embed,
+			Components: votingButtons(o),
+		})
+		o.MessageID = msg.ID
+		updateOfferFile(o)
 	},
 }
 
@@ -42,7 +52,7 @@ func offerMessage(s *discordgo.Session, msg *discordgo.Message) *discordgo.Messa
 	authorMember, _ := s.GuildMember(msg.GuildID, msg.Author.ID)
 	embed := &discordgo.MessageEmbed{
 		Author: &discordgo.MessageEmbedAuthor{
-			Name:    authorMember.DisplayName(),
+			Name:    fmt.Sprintf("%s\nID: %s", authorMember.DisplayName(), authorMember.User.ID),
 			IconURL: authorMember.AvatarURL(""),
 		},
 		Title:       "Предложение",
@@ -50,26 +60,28 @@ func offerMessage(s *discordgo.Session, msg *discordgo.Message) *discordgo.Messa
 		Description: msg.Content,
 	}
 	return &discordgo.MessageSend{
-		Components: votingButtons,
+		Components: votingButtons(&offer{}),
 		Embed:      embed,
 	}
 }
 
-var votingButtons = []discordgo.MessageComponent{
-	discordgo.ActionsRow{
-		Components: []discordgo.MessageComponent{
-			discordgo.Button{
-				Label:    "0",
-				CustomID: "halal",
-				Style:    discordgo.SuccessButton,
-				Emoji:    &discordgo.ComponentEmoji{Name: "👍"},
-			},
-			discordgo.Button{
-				Label:    "0",
-				CustomID: "haram",
-				Style:    discordgo.DangerButton,
-				Emoji:    &discordgo.ComponentEmoji{Name: "👎"},
+func votingButtons(o *offer) []discordgo.MessageComponent {
+	return []discordgo.MessageComponent{
+		discordgo.ActionsRow{
+			Components: []discordgo.MessageComponent{
+				discordgo.Button{
+					Label:    strconv.Itoa(votersCount(o, HALAL)),
+					CustomID: "halal",
+					Style:    discordgo.SuccessButton,
+					Emoji:    &discordgo.ComponentEmoji{Name: "👍"},
+				},
+				discordgo.Button{
+					Label:    strconv.Itoa(votersCount(o, HARAM)),
+					CustomID: "haram",
+					Style:    discordgo.DangerButton,
+					Emoji:    &discordgo.ComponentEmoji{Name: "👎"},
+				},
 			},
 		},
-	},
+	}
 }

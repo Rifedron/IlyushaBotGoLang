@@ -8,10 +8,18 @@ import (
 type config struct {
 	Token              string `json:"token"`
 	OffersChannelId    string `json:"offersChannelId"`
-	OfferReplierRoleID string `json:"offerReplierRoleID"`
 	OfferLogsChannelID string `json:"offerLogsChannelID"`
+
+	HighStaffRoleID string `json:"highStaffRoleID"`
+	ElderModRoleID  string `json:"elderModRoleID"`
+	ModeratorRoleID string `json:"moderatorRoleID"`
+
 	PrivatesFabricID   string `json:"privatesFabricID"`
 	PrivatesCategoryID string `json:"privatesCategoryID"`
+
+	TicketsActiveCategoryID        string `json:"ticketsActiveCategoryID"`
+	TicketsConsiderationCategoryID string `json:"ticketsConsiderationCategoryID"`
+	TicketsClosedCategoryID        string `json:"ticketsClosedCategoryID"`
 }
 
 func parseConfig() *config {

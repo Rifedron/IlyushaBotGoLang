@@ -9,18 +9,18 @@ import (
 
 var OfferCommands = []*discordgo.ApplicationCommand{
 	{
-		Name: "Ответить на предложение",
+		Name: "Управлять предложением",
 		Type: discordgo.MessageApplicationCommand,
 	},
 }
 
 var OfferInteractions = map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate){
 	//Context commands
-	"Ответить на предложение": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	"Управлять предложением": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		messageID := i.ApplicationCommandData().TargetID
-		_, valid := isOfferReplyValid(s, i, messageID)
+		o, valid := isOfferManageValid(s, i, messageID)
 		if valid {
-			_ = s.InteractionRespond(i.Interaction, offerReplySelectMenuMessage(messageID))
+			_ = s.InteractionRespond(i.Interaction, offerManageSelectMenuMessage(s, messageID, o, i))
 		}
 	},
 	//Select menu
@@ -28,7 +28,7 @@ var OfferInteractions = map[string]func(s *discordgo.Session, i *discordgo.Inter
 		value := strings.Split(i.MessageComponentData().Values[0], "|")
 		option := value[0]
 		offerID := value[1]
-		offer, valid := isOfferReplyValid(s, i, offerID)
+		offer, valid := isOfferManageValid(s, i, offerID)
 		if valid {
 			message, _ := s.ChannelMessage(i.ChannelID, offerID)
 			embed := *message.Embeds[0]
@@ -39,10 +39,11 @@ var OfferInteractions = map[string]func(s *discordgo.Session, i *discordgo.Inter
 			case "delete":
 				_ = s.InteractionRespond(i.Interaction, deletingModal(offerID))
 				break
+			case "deny":
+				s.InteractionRespond(i.Interaction, denyModal(offerID))
 			default:
 				newStatus := getStatusByID(option)
-				embed.Color = newStatus.Color
-				embed.Title = "Предложение | " + newStatus.DisplayName
+				mergeEmbedByStatus(&embed, newStatus)
 				embed.Footer = embedFooter(s, i)
 				go s.ChannelMessageEditEmbed(i.ChannelID, offerID, &embed)
 				offer.Status = newStatus.StatusCode
@@ -50,6 +51,44 @@ var OfferInteractions = map[string]func(s *discordgo.Session, i *discordgo.Inter
 
 				go updateOfferFile(offer)
 				_ = s.InteractionRespond(i.Interaction, feedbackModal(offerID))
+			}
+		}
+	},
+	"selfOfferManage": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+		value := strings.Split(i.MessageComponentData().Values[0], "|")
+		option := value[0]
+		offerID := value[1]
+		offer, valid := isOfferManageValid(s, i, offerID)
+		if valid {
+			switch option {
+			case "edit":
+				if offer.Status != IGNORED.StatusCode {
+					s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+						Type: discordgo.InteractionResponseUpdateMessage,
+						Data: &discordgo.InteractionResponseData{
+							Content: "Нельзя изменять отвеченные предложения",
+							Flags:   discordgo.MessageFlagsEphemeral,
+						},
+					})
+					break
+				}
+				_ = s.InteractionRespond(i.Interaction, editModal(offerID))
+				break
+			case "deleteMy":
+				go removeOfferFile(offerID)
+				go s.ChannelMessageDelete(i.ChannelID, offerID)
+				go s.ChannelMessageSendComplex(IlyushaBot.Cfg.OfferLogsChannelID, &discordgo.MessageSend{
+					Content: fmt.Sprintf("Удалено создателем (<@%s>)", offer.AuthorID),
+					Embed:   offer.Embed,
+				})
+				s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+					Type: discordgo.InteractionResponseUpdateMessage,
+					Data: &discordgo.InteractionResponseData{
+						Content: "Вы удалили своё предложение",
+						Flags:   discordgo.MessageFlagsEphemeral,
+					},
+				})
+				break
 			}
 		}
 	},
@@ -87,6 +126,43 @@ var OfferInteractions = map[string]func(s *discordgo.Session, i *discordgo.Inter
 		offer.Embed = &embed
 		updateOfferFile(offer)
 	},
+	"deny": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+		offerID := strings.Split(i.ModalSubmitData().CustomID, "|")[1]
+		reason := i.ModalSubmitData().Components[0].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value
+
+		o, err := getOffer(offerID)
+		if err != nil {
+			return
+		}
+
+		message, err := s.ChannelMessage(i.ChannelID, offerID)
+		if err != nil {
+			return
+		}
+		embed := message.Embeds[0]
+		embed.Footer = embedFooter(s, i)
+		mergeEmbedByStatus(embed, DENIED)
+		embed.Fields = []*discordgo.MessageEmbedField{
+			{
+				Name:  "Причина",
+				Value: reason,
+			},
+		}
+
+		o.Status = DENIED.StatusCode
+		o.Embed = embed
+		go s.ChannelMessageEditEmbed(i.ChannelID, offerID, embed)
+
+		_ = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: "Вы отклонили предложение",
+				Flags:   discordgo.MessageFlagsEphemeral,
+			},
+		})
+
+		updateOfferFile(o)
+	},
 	"delete": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		offerID := strings.Split(i.ModalSubmitData().CustomID, "|")[1]
 		reason := i.ModalSubmitData().Components[0].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value
@@ -106,6 +182,26 @@ var OfferInteractions = map[string]func(s *discordgo.Session, i *discordgo.Inter
 			},
 		})
 	},
+	"edit": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+		offerID := strings.Split(i.ModalSubmitData().CustomID, "|")[1]
+		message, err := s.ChannelMessage(i.ChannelID, offerID)
+		if err != nil {
+			return
+		}
+		embed := *message.Embeds[0]
+		embed.Description = i.ModalSubmitData().Components[0].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value
+		go s.ChannelMessageEditEmbed(i.ChannelID, offerID, &embed)
+		_ = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: "Вы оставили комментарий",
+				Flags:   discordgo.MessageFlagsEphemeral,
+			},
+		})
+		offer, _ := getOffer(offerID)
+		offer.Embed = &embed
+		updateOfferFile(offer)
+	},
 }
 
 func vote(s *discordgo.Session, i *discordgo.InteractionCreate, messageID string, voteType VoteType) {
@@ -113,6 +209,17 @@ func vote(s *discordgo.Session, i *discordgo.InteractionCreate, messageID string
 	if err != nil {
 		return
 	}
+	if offer.AuthorID == i.Member.User.ID {
+		_ = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: "Вы не можете голосовать за своё предложение",
+				Flags:   discordgo.MessageFlagsEphemeral,
+			},
+		})
+		return
+	}
+
 	mutateVotedOffer(offer, voteType, i.Member.User.ID)
 
 	go updateOfferFile(offer)
@@ -122,52 +229,9 @@ func vote(s *discordgo.Session, i *discordgo.InteractionCreate, messageID string
 	})
 }
 
-func feedbackModal(offerID string) *discordgo.InteractionResponse {
-	return &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseModal,
-		Data: &discordgo.InteractionResponseData{
-			Title:    "Комментарий к предложению",
-			CustomID: "feedback|" + offerID,
-			Components: []discordgo.MessageComponent{
-				discordgo.ActionsRow{
-					Components: []discordgo.MessageComponent{
-						discordgo.TextInput{
-							CustomID:    "text",
-							Label:       "Текст комментария",
-							Style:       discordgo.TextInputParagraph,
-							Placeholder: "Предложение имба",
-							Required:    true,
-							MaxLength:   500,
-						},
-					},
-				},
-			},
-		},
-	}
-}
-
-func deletingModal(offerID string) *discordgo.InteractionResponse {
-	return &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseModal,
-		Data: &discordgo.InteractionResponseData{
-			Title:    "Удалить предложение",
-			CustomID: "delete|" + offerID,
-			Components: []discordgo.MessageComponent{
-				discordgo.ActionsRow{
-					Components: []discordgo.MessageComponent{
-						discordgo.TextInput{
-							CustomID:    "text",
-							Label:       "Причина удаления",
-							Style:       discordgo.TextInputParagraph,
-							Placeholder: "Предложение мегаступид",
-							Required:    true,
-							MaxLength:   500,
-						},
-					},
-				},
-			},
-		},
-	}
+func mergeEmbedByStatus(embed *discordgo.MessageEmbed, status *Status) {
+	embed.Title = "Предложение | " + status.DisplayName
+	embed.Color = status.Color
 }
 
 func embedFooter(s *discordgo.Session, i *discordgo.InteractionCreate) *discordgo.MessageEmbedFooter {
@@ -178,9 +242,9 @@ func embedFooter(s *discordgo.Session, i *discordgo.InteractionCreate) *discordg
 	}
 }
 
-func isOfferReplyValid(s *discordgo.Session, i *discordgo.InteractionCreate, messageID string) (*offer, bool) {
+func isOfferManageValid(s *discordgo.Session, i *discordgo.InteractionCreate, messageID string) (*offer, bool) {
 	offer, b := offerExists(s, i, messageID)
-	return offer, b && memberHasReplierRole(s, i, i.Member)
+	return offer, b
 }
 
 func offerExists(s *discordgo.Session, i *discordgo.InteractionCreate, messageID string) (*offer, bool) {
@@ -196,69 +260,6 @@ func offerExists(s *discordgo.Session, i *discordgo.InteractionCreate, messageID
 		return nil, false
 	}
 	return offer, true
-}
-
-func memberHasReplierRole(s *discordgo.Session, i *discordgo.InteractionCreate, member *discordgo.Member) bool {
-
-	_ = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
-			Content: "У вас нет прав на рассмотрение предложений",
-			Flags:   discordgo.MessageFlagsEphemeral,
-		},
-	})
-	return false
-}
-
-func roleById(roles discordgo.Roles, id string) *discordgo.Role {
-	for _, role := range roles {
-		if role.ID == id {
-			return role
-		}
-	}
-	return nil
-}
-
-func offerReplySelectMenuMessage(messageID string) *discordgo.InteractionResponse {
-	return &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
-			Components: []discordgo.MessageComponent{
-				discordgo.ActionsRow{
-					Components: []discordgo.MessageComponent{
-						discordgo.SelectMenu{
-							MenuType: discordgo.StringSelectMenu,
-							CustomID: "statusSelectMenu",
-							Options: []discordgo.SelectMenuOption{
-								menuOptionFromStatus(IMPLEMENTED, messageID),
-								menuOptionFromStatus(ACCEPTED, messageID),
-								menuOptionFromStatus(DENIED, messageID),
-								{
-									Label: "Изменить комментарий",
-									Value: "feedback|" + messageID,
-									Emoji: &discordgo.ComponentEmoji{Name: "📝"},
-								},
-								{
-									Label: "Удалить предложение",
-									Value: "delete|" + messageID,
-									Emoji: &discordgo.ComponentEmoji{Name: "🗑"},
-								},
-							},
-						},
-					},
-				},
-			},
-			Flags: discordgo.MessageFlagsEphemeral,
-		},
-	}
-}
-
-func menuOptionFromStatus(status *Status, messageID string) discordgo.SelectMenuOption {
-	return discordgo.SelectMenuOption{
-		Label: status.DisplayName,
-		Value: fmt.Sprintf("%s|%s", status.ID, messageID),
-		Emoji: &status.Emoji,
-	}
 }
 
 func mutateVotedOffer(offer *offer, voteType VoteType, voterID string) {

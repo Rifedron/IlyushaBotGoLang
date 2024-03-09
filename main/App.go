@@ -4,6 +4,8 @@ import (
 	"awesomeProject/main/IlyushaBot"
 	"awesomeProject/main/IlyushaBot/offers"
 	"awesomeProject/main/IlyushaBot/privateVCs"
+	"awesomeProject/main/IlyushaBot/rofls"
+	"awesomeProject/main/IlyushaBot/tickets"
 	"fmt"
 	"github.com/bwmarrin/discordgo"
 	"os"
@@ -23,6 +25,8 @@ func main() {
 		//Event handler slices
 		offers.OfferEvents,
 		privateVCs.PrivateVcEvents,
+		tickets.TicketEvents,
+		rofls.RoflsEvents,
 	) {
 		Bob.AddHandler(handler)
 	}
@@ -101,8 +105,10 @@ func onInteraction(s *discordgo.Session, i *discordgo.InteractionCreate) {
 }
 
 var mergedInteractionMap = makeMergedMap(
+	//Interactions
 	offers.OfferInteractions,
 	privateVCs.PrivatesInteractions,
+	tickets.TicketInteractions,
 )
 
 func makeMergedMap(maps ...map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate)) map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate) {

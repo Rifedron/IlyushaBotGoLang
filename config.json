@@ -1,8 +1,17 @@
 {
   "token": "token",
+
+  "highStaffRoleID": "1114110794343391317",
+  "elderModRoleID": "1114110794343391314",
+  "moderatorRoleID": "1114110794343391313",
+
   "offersChannelId": "1114110794804768864",
-  "offerReplierRoleID": "1114110794343391313",
   "offerLogsChannelID": "1197255307907313714",
+
   "privatesFabricID": "1114110795161288707",
-  "privatesCategoryID": "1114110795161288706"
+  "privatesCategoryID": "1114110795161288706",
+
+  "ticketsActiveCategoryID": "1196478517412630608",
+  "ticketsConsiderationCategoryID": "1196782429583720478",
+  "ticketsClosedCategoryID": "1214633443984416798"
 }

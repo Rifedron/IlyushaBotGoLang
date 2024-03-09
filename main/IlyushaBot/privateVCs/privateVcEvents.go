@@ -2,6 +2,7 @@ package privateVCs
 
 import (
 	"awesomeProject/main/IlyushaBot"
+	"fmt"
 	"github.com/bwmarrin/discordgo"
 	"time"
 )
@@ -45,20 +46,52 @@ func voiceJoin(s *discordgo.Session, st *discordgo.VoiceState) {
 	private := privateVoice(st.ChannelID)
 	if private != nil {
 		if private.CurrentOwnerID == st.UserID {
-			_ = s.ChannelPermissionSet(private.ChannelID, private.CurrentOwnerID, discordgo.PermissionOverwriteTypeMember,
+			err := s.ChannelPermissionSet(private.ChannelID, private.CurrentOwnerID, discordgo.PermissionOverwriteTypeMember,
 				discordgo.PermissionManageChannels|discordgo.PermissionVoiceMoveMembers, 0)
+			if err != nil {
+				fmt.Println(err.Error())
+			}
 		}
 	}
 }
+func voiceQuit(s *discordgo.Session, st *discordgo.VoiceState) {
+	private := privateVoice(st.ChannelID)
+	if private != nil {
+		if voiceEmpty(s, st.GuildID, private.ChannelID) {
+			deletePrivate(s, private)
+			return
+		}
+		if private.CurrentOwnerID == st.UserID {
+			ch, err := s.Channel(private.ChannelID)
+			if err != nil {
+				return
+			}
+			for _, overwrite := range ch.PermissionOverwrites {
+				if overwrite.ID == private.CurrentOwnerID {
+					err := s.ChannelPermissionDelete(private.ChannelID, private.CurrentOwnerID)
+					if err != nil {
+						fmt.Println(err.Error())
+					}
+					break
+				}
+			}
+		}
+	}
+}
+
 func newPrivateVc(s *discordgo.Session, st *discordgo.VoiceState) {
-	channel, _ := s.GuildChannelCreateComplex(st.GuildID, discordgo.GuildChannelCreateData{
+	channel, err := s.GuildChannelCreateComplex(st.GuildID, discordgo.GuildChannelCreateData{
 		Name:                 st.Member.DisplayName(),
 		Type:                 discordgo.ChannelTypeGuildVoice,
 		PermissionOverwrites: privateVoicePermOverwrites(st.UserID),
 		ParentID:             IlyushaBot.Cfg.PrivatesCategoryID,
 	})
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
 	go s.ChannelMessageSendEmbed(channel.ID, newPrivateEmbed(s, st))
-	err := s.GuildMemberMove(st.GuildID, st.UserID, &channel.ID)
+	err = s.GuildMemberMove(st.GuildID, st.UserID, &channel.ID)
 	if err != nil {
 		_, _ = s.ChannelDelete(channel.ID)
 		return
@@ -74,24 +107,6 @@ func newPrivateVc(s *discordgo.Session, st *discordgo.VoiceState) {
 	time.Sleep(500 * time.Millisecond)
 	if voiceEmpty(s, st.GuildID, newPrivate.ChannelID) {
 		deletePrivate(s, newPrivate)
-	}
-}
-func voiceQuit(s *discordgo.Session, st *discordgo.VoiceState) {
-	private := privateVoice(st.ChannelID)
-	if private != nil {
-		if voiceEmpty(s, st.GuildID, private.ChannelID) {
-			deletePrivate(s, private)
-			return
-		}
-		if private.CurrentOwnerID == st.UserID {
-			ch, _ := s.Channel(private.ChannelID)
-			for _, overwrite := range ch.PermissionOverwrites {
-				if overwrite.ID == private.CurrentOwnerID {
-					_ = s.ChannelPermissionDelete(private.ChannelID, private.CurrentOwnerID)
-					break
-				}
-			}
-		}
 	}
 }
 
@@ -113,7 +128,7 @@ func newPrivateEmbed(s *discordgo.Session, st *discordgo.VoiceState) *discordgo.
 		Fields: []*discordgo.MessageEmbedField{
 			{
 				Name:  "Примечание:",
-				Value: "первоначальный создатель комнаты пожет отобрать права даже у активного владельца",
+				Value: "первоначальный создатель комнаты может отобрать права даже у активного владельца",
 			},
 		},
 	}
