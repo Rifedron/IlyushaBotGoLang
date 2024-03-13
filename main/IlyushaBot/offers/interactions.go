@@ -101,11 +101,12 @@ var OfferInteractions = map[string]func(s *discordgo.Session, i *discordgo.Inter
 	//Modals
 	"feedback": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		offerID := strings.Split(i.ModalSubmitData().CustomID, "|")[1]
-		message, err := s.ChannelMessage(i.ChannelID, offerID)
+		offer, err := getOffer(offerID)
 		if err != nil {
+			s.InteractionRespond(i.Interaction, IlyushaBot.EphemeralTextResponse("Предложения не существует"))
 			return
 		}
-		embed := *message.Embeds[0]
+		embed := offer.Embed
 		embed.Footer = embedFooter(s, i)
 		embed.Fields = []*discordgo.MessageEmbedField{
 			{
@@ -113,7 +114,7 @@ var OfferInteractions = map[string]func(s *discordgo.Session, i *discordgo.Inter
 				Value: i.ModalSubmitData().Components[0].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value,
 			},
 		}
-		go s.ChannelMessageEditEmbed(i.ChannelID, offerID, &embed)
+		go s.ChannelMessageEditEmbed(i.ChannelID, offerID, embed)
 		_ = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{
@@ -121,8 +122,7 @@ var OfferInteractions = map[string]func(s *discordgo.Session, i *discordgo.Inter
 				Flags:   discordgo.MessageFlagsEphemeral,
 			},
 		})
-		offer, _ := getOffer(offerID)
-		offer.Embed = &embed
+		offer.Embed = embed
 		updateOfferFile(offer)
 	},
 	"deny": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -131,14 +131,10 @@ var OfferInteractions = map[string]func(s *discordgo.Session, i *discordgo.Inter
 
 		o, err := getOffer(offerID)
 		if err != nil {
+			s.InteractionRespond(i.Interaction, IlyushaBot.EphemeralTextResponse("Предложения не существует"))
 			return
 		}
-
-		message, err := s.ChannelMessage(i.ChannelID, offerID)
-		if err != nil {
-			return
-		}
-		embed := message.Embeds[0]
+		embed := o.Embed
 		embed.Footer = embedFooter(s, i)
 		mergeEmbedByStatus(embed, DENIED)
 		embed.Fields = []*discordgo.MessageEmbedField{
@@ -147,9 +143,7 @@ var OfferInteractions = map[string]func(s *discordgo.Session, i *discordgo.Inter
 				Value: reason,
 			},
 		}
-
 		o.Status = DENIED.StatusCode
-		o.Embed = embed
 		go s.ChannelMessageEditEmbed(i.ChannelID, offerID, embed)
 
 		_ = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
