@@ -30,12 +30,7 @@ var OfferInteractions = map[string]func(s *discordgo.Session, i *discordgo.Inter
 		offerID := value[1]
 		offer, valid := isOfferManageValid(s, i, offerID)
 		if valid {
-			message, err := s.ChannelMessage(i.ChannelID, offerID)
-			if err != nil {
-				s.InteractionRespond(i.Interaction, IlyushaBot.EphemeralTextResponse("Сообщение было удалено"))
-				return
-			}
-			embed := *message.Embeds[0]
+			embed := offer.Embed
 			switch option {
 			case "feedback":
 				_ = s.InteractionRespond(i.Interaction, feedbackModal(offerID))
@@ -47,11 +42,11 @@ var OfferInteractions = map[string]func(s *discordgo.Session, i *discordgo.Inter
 				s.InteractionRespond(i.Interaction, denyModal(offerID))
 			default:
 				newStatus := getStatusByID(option)
-				mergeEmbedByStatus(&embed, newStatus)
+				mergeEmbedByStatus(embed, newStatus)
 				embed.Footer = embedFooter(s, i)
-				go s.ChannelMessageEditEmbed(i.ChannelID, offerID, &embed)
+				go s.ChannelMessageEditEmbed(i.ChannelID, offerID, embed)
 				offer.Status = newStatus.StatusCode
-				offer.Embed = &embed
+				offer.Embed = embed
 
 				go updateOfferFile(offer)
 				_ = s.InteractionRespond(i.Interaction, feedbackModal(offerID))
