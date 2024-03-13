@@ -30,7 +30,11 @@ var OfferInteractions = map[string]func(s *discordgo.Session, i *discordgo.Inter
 		offerID := value[1]
 		offer, valid := isOfferManageValid(s, i, offerID)
 		if valid {
-			message, _ := s.ChannelMessage(i.ChannelID, offerID)
+			message, err := s.ChannelMessage(i.ChannelID, offerID)
+			if err != nil {
+				s.InteractionRespond(i.Interaction, IlyushaBot.EphemeralTextResponse("Сообщение было удалено"))
+				return
+			}
 			embed := *message.Embeds[0]
 			switch option {
 			case "feedback":
